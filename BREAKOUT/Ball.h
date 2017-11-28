@@ -4,7 +4,7 @@
 class Ball
 {
 public:
-	float speed = 1000.f;
+	float speed = 500.f;
 	float angle;
 	sf::CircleShape picture;
 	void initiate();

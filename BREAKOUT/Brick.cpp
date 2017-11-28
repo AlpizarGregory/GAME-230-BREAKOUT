@@ -14,7 +14,17 @@ void Brick::setPosition(float x, float y)
 {
 	picture.setPosition(sf::Vector2f(x, y));
 }
-void Brick::hit()
+bool Brick::hit()
 {
-	enable = false;
+	hp--;
+	if (hp == 0)
+	{
+		enable = false;
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+
 }
