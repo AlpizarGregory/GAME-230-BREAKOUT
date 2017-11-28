@@ -450,6 +450,11 @@ void HandleInput()
 			isPlaying = true;
 		}
 
+		if (!isPlaying)
+		{
+			ball.picture.setPosition(paddle.picture.getPosition().x, paddle.picture.getPosition().y - paddle.picture.getSize().y / 2 - ball.picture.getRadius());
+		}
+
 	}
 
 	if (sf::Keyboard::isKeyPressed(sf::Keyboard::Return))
@@ -473,15 +478,18 @@ void HandleInput()
 	}
 	else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num1))
 	{
-		loadLevel(0);
+		level = 0;
+		loadLevel(level);
 	}
 	else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num2))
 	{
-		loadLevel(1);
+		level = 1;
+		loadLevel(level);
 	}
 	else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num3))
 	{
-		loadLevel(2);
+		level = 2;
+		loadLevel(level);
 	}
 	
 }
