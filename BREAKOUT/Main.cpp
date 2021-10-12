@@ -1,20 +1,8 @@
 #include <SFML/Window.hpp>
 #include <SFML/Graphics.hpp>
-#include <SFML/Audio.hpp>
-#include <vector>
+#include <time.h>
+#include <iostream>
 #include <math.h>
-
-#define _CRTDBG_MAP_ALLOC
-#define _CRTDBG_MAP_ALLOC_NEW
-#include <cstdlib>
-#include <crtdbg.h>
-#ifdef _DEBUG
-#ifndef DBG_NEW
-#define DBG_NEW new ( _NORMAL_BLOCK , __FILE__ , __LINE__ )
-#define new DBG_NEW
-#endif
-#endif
-
 
 #include "Paddle.h"
 #include "Ball.h"
@@ -23,14 +11,18 @@
 using namespace sf;
 using namespace std;
 
-const float pi = 3.14159f;
-
 RenderWindow window;
 
 Font font;
-Text gameoverText;
+Text gameOverText;
 Text lifeText;
 Text scoreText;
+
+// Variables no fijas
+#include <vector>
+#include <cstdlib>
+
+const float pi = 3.14159f;
 
 Clock gameClock;
 float deltaTime;
@@ -38,17 +30,16 @@ float deltaTime;
 float frameWidth = 800;
 float frameHeight = 800;
 
-bool isPlaying = false;
-bool gameover = false;
+bool playing = false;
+bool gameOver = false;
 bool win = false;
 
 int life = 3;
 int level = 0;
 int score = 0;
-int combo = 0;
 
-const float startposX = 55;
-const float startposY = 70;
+const float startPosX = 55;
+const float startPosY = 70;
 
 Paddle paddle;
 Ball ball;
@@ -59,24 +50,8 @@ Texture textureBack;
 Texture texturePaddle;
 Texture textureBrick;
 
-SoundBuffer hitPaddleBuf;
-SoundBuffer destroyBrickBuf;
-SoundBuffer damageBrickBuf;
-SoundBuffer bounceWallBuf;
-SoundBuffer dieBuf;
-SoundBuffer winBuf;
-SoundBuffer loseBuf;
-SoundBuffer BGMbuf;
-Sound hitPaddleSound;
-Sound destroyBrickSound;
-Sound damageBrickSound;
-Sound bounceWallSound;
-Sound dieSound;
-Sound winSound;
-Sound loseSound;
-Sound BGMSound;
-
 vector<Brick*> bricks;
+vector<Ball*> balls;
 
 void Initiate();
 void Reset();
@@ -90,690 +65,609 @@ bool BallRight(RectangleShape rect);
 bool BallUp(RectangleShape rect);
 bool BallBottom(RectangleShape rect);
 
-int main()
-{
-	
-	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF |
-		_CRTDBG_LEAK_CHECK_DF);
+// Fin de variables
+
+int main() {
+
+    window.create(VideoMode(frameWidth,frameHeight), "Breakout");
+    Initiate();
+    loadLevel(0);
+
+    while (window.isOpen()) {
+        deltaTime = gameClock.restart().asSeconds();
+        HandleInput();
+
+        if (playing&&!gameOver&&!win) {
+            Update();
+        }
+
+        Render();
+    }
+
+    return EXIT_SUCCESS;
+}
+
+void Initiate() {
+    font.loadFromFile("consola.ttf");
+
+    textureBall.loadFromFile("ball.png");
+    textureBack.loadFromFile("back.png");
+    texturePaddle.loadFromFile("paddle.png");
+    textureBrick.loadFromFile("brick.png");
+
+    background.setSize(Vector2f(frameWidth, frameHeight));
+    background.setPosition(0, 0);
+    background.setTexture(&textureBack);
+
+    lifeText.setFont(font);
+    lifeText.setCharacterSize(20);
+    lifeText.setPosition(620, frameHeight-30);
+    lifeText.setString("life:"+ std::to_string(life));
+
+    gameOverText.setFont(font);
+    gameOverText.setCharacterSize(35);
+    gameOverText.setPosition(100, 400);
+    gameOverText.setString("");
+
+    scoreText.setFont(font);
+    scoreText.setCharacterSize(20);
+    scoreText.setPosition(80, frameHeight - 30);
+    scoreText.setString("score:"+ std::to_string(score));
+}
+void Reset(){
+    ball.setPosition(paddle.picture.getPosition().x, paddle.picture.getPosition().y - paddle.picture.getSize().y / 2 - ball.picture.getRadius());
+    ball.angle = (270 + std::rand() % 60 - 30) * 2 * pi / 360;
+}
+
+void Update(){
+    if (ball.angle < 0) {
+        ball.angle += 2 * pi;
+    }
+    ball.angle = fmod(ball.angle, 2 * pi);
+
+    float factor = ball.speed * deltaTime;
+    ball.picture.move(cos(ball.angle) * factor, sin(ball.angle) * factor);
+
+    //physics
+    //edge
+    if (ball.picture.getPosition().y + ball.picture.getRadius() > frameHeight) {
+        playing = false;
+        life--;
+        Reset();
+
+    } else if (ball.picture.getPosition().x - ball.picture.getRadius() < 50.f) {
+        ball.angle = pi - ball.angle;
+        ball.picture.setPosition(ball.picture.getRadius() + 50.1f, ball.picture.getPosition().y);
+
+    } else if (ball.picture.getPosition().x + ball.picture.getRadius() > frameWidth-50) {
+        ball.angle = pi - ball.angle;
+        ball.setPosition(frameWidth - ball.picture.getRadius() - 50.1f, ball.picture.getPosition().y);
+
+    } else if (ball.picture.getPosition().y - ball.picture.getRadius() < 50.f) {
+        ball.angle = -ball.angle;
+        ball.setPosition(ball.picture.getPosition().x, ball.picture.getRadius()+50.1f);
+
+    }
+
+    //paddle
+    if (BallBottom(paddle.picture)) {
+        int dis = ball.picture.getPosition().x - paddle.picture.getPosition().x;
+
+        if (dis > 30 && ball.angle > 1.f / 2.f*pi) {
+            ball.angle = ball.angle - pi;
+
+        } else if (dis < -30 && ball.angle < 1.f / 2.f*pi) {
+            ball.angle = ball.angle - pi;
+
+        } else {
+            ball.angle = -ball.angle;
+
+            if (ball.angle > 1.f / 2.f*pi && ball.angle < 7.f / 8.f*pi) {
+                ball.angle += (rand() % 15) * pi / 180;
+
+           } else if (ball.angle < 1.f / 2.f*pi && ball.angle > 1.f / 8.f*pi) {
+                ball.angle -= (rand() % 15) * pi / 180;
+
+            } else if (ball.angle <= 1.f / 8.f*pi) {
+                ball.angle += (rand() % 15) * pi / 180;
+
+            } else if (ball.angle >= 7.f / 8.f*pi) {
+                ball.angle -= (rand() % 15) * pi / 180;
+            }
+        }
+
+        ball.setPosition(ball.picture.getPosition().x, paddle.picture.getPosition().y - paddle.picture.getSize().y / 2 - ball.picture.getRadius() - 0.1f);
+
+    }
+
+    //bricks
+    for (int i = 0; i < bricks.size(); ++i) {
+        if (bricks[i] -> enable) {
+            if (bricks[i] -> speed != 0.f) {
+                if (bricks[i] -> picture.getPosition().x - bricks[i] -> picture.getSize().x / 2 < 50.f)
+                    bricks[i] -> moveLeft = false;
+
+                else if (bricks[i] -> picture.getPosition().x + bricks[i] -> picture.getSize().x / 2 > frameWidth - 50.f)
+                    bricks[i] -> moveLeft = true;
+
+                if (bricks[i] -> moveLeft)
+                    bricks[i] -> picture.move(-bricks[i] -> speed* deltaTime, 0.0f);
+
+                else
+                    bricks[i] -> picture.move(bricks[i] -> speed* deltaTime, 0.0f);
+
+            }
+
+            if (BallUp(bricks[i] -> picture)) {
+                ball.angle = -ball.angle;
+                ball.setPosition(ball.picture.getPosition().x, bricks[i] -> picture.getPosition().y + bricks[i] -> picture.getSize().y / 2 + ball.picture.getRadius() + 0.1f);
+                if (bricks[i]->hit()){
+                    int surpTemp = rand() % 6;
+                    (bricks[i]->scoreChange());
+                    (bricks[i]->surprise(surpTemp));
+                }
+                else{}
 
 
-	window.create(VideoMode(frameWidth, frameHeight), "BREAKOUT");
-	Initiate();
-	loadLevel(0);
-	while (window.isOpen())
-	{
+            } else if (BallBottom(bricks[i] -> picture)) {
+                ball.angle = -ball.angle;
+                ball.setPosition(ball.picture.getPosition().x, bricks[i] -> picture.getPosition().y - bricks[i] -> picture.getSize().y / 2 - ball.picture.getRadius() - 0.1f);
+                if (bricks[i]->hit()) {
+                    int surpTemp = rand() % 6;
+                    (bricks[i]->scoreChange());
+                    (bricks[i]->surprise(surpTemp));
+                }
 
-		deltaTime = gameClock.restart().asSeconds();
-		HandleInput();
+                else{
 
-		
-		if (isPlaying&&!gameover&&!win)
-		{
-			Update();
-		}
+                }
 
 
+            } else if (BallLeft(bricks[i] -> picture)) {
+                ball.angle = pi - ball.angle;
+                ball.setPosition(bricks[i] -> picture.getPosition().x + ball.picture.getRadius() + bricks[i] -> picture.getSize().x / 2 + 0.1f, ball.picture.getPosition().y);
+                int surpTemp = rand() % 8;
+                (bricks[i]->scoreChange());
+                (bricks[i]->surprise(surpTemp));
 
-		Render();
-	}
 
-	return EXIT_SUCCESS;
+            } else if (BallRight(bricks[i] -> picture)) {
+                ball.angle = pi - ball.angle;
+                ball.setPosition(bricks[i] -> picture.getPosition().x - ball.picture.getRadius() - bricks[i] -> picture.getSize().x / 2 - 0.1f, ball.picture.getPosition().y);
+                int surpTemp = rand() % 8;
+                (bricks[i]->scoreChange());
+                (bricks[i]->surprise(surpTemp));
+          }
+        }
+    }
 
+    if (life <= 0) {
+        gameOver = true;
+        gameOverText.setString("Game Over, press \"Enter\" restart");
+    }
+
+    int count = 0;
+
+    for (int i = 0; i < bricks.size(); ++i) {
+        if (bricks[i] -> enable && bricks[i] -> hp < 4)
+            count++;
+
+    }
+
+    if (count <= 0) {
+        win = true;
+        ball.speed += 100.f;
+        gameOverText.setString("Win! press \"Enter\" to next level");
+
+    }
+
+    lifeText.setString("Life: " + to_string(life));
+    scoreText.setString("Score: " + to_string(score));
+
+}
+void Render() {
+    window.clear(sf::Color::Black);
+    window.draw(background);
+    window.draw(paddle.picture);
+    window.draw(ball.picture);
+
+    for (int i = 0; i < bricks.size(); ++i) {
+        if (bricks[i]->enable) {
+            if (bricks[i]->hp == 1) {
+                bricks[i]->picture.setTexture(&textureBrick);
+                bricks[i]->picture.setFillColor(Color(49, 107, 131, 255));
+            } else if (bricks[i]->hp == 2) {
+                bricks[i]->picture.setTexture(&textureBrick);
+                bricks[i]->picture.setFillColor(Color(109, 130, 153, 255));
+            }
+            else if (bricks[i]->hp == 3) {
+                    bricks[i]->picture.setTexture(&textureBrick);
+                    bricks[i]->picture.setFillColor(Color(140, 161, 165, 255));
+            } else {
+                bricks[i]->picture.setTexture(&textureBrick);
+                bricks[i]->picture.setFillColor(Color(213, 191, 191, 255));
+            }
+            window.draw(bricks[i]->picture);
+
+        }
+
+    }
+    window.draw(lifeText);
+    window.draw(gameOverText);
+    window.draw(scoreText);
+    window.display();
 
 }
 
-void Initiate()
-{
-	font.loadFromFile("consola.ttf");
+void HandleInput() {
+    Event event;
 
-	textureBall.loadFromFile("ball.png");
-	textureBack.loadFromFile("back.png");
-	texturePaddle.loadFromFile("paddle.png");
-	textureBrick.loadFromFile("brick.png");
+    while (window.pollEvent(event)) {
+        if(event.type == Event::Closed) {
+            window.close();
 
-	BGMbuf.loadFromFile("BGM.flac");
-	BGMSound.setBuffer(BGMbuf);
-	BGMSound.setLoop(true);
-	BGMSound.play();
+            for (int i = 0; i < bricks.size(); ++i) {
+                delete bricks[i];
+                bricks[i] = nullptr;
 
-	hitPaddleBuf.loadFromFile("hitPaddle.wav");
-	destroyBrickBuf.loadFromFile("destroyBrick.wav");
-	damageBrickBuf.loadFromFile("damageBrick.wav");
-	bounceWallBuf.loadFromFile("bounceWall.wav");
-	dieBuf.loadFromFile("die.wav");
-	winBuf.loadFromFile("win.wav");
-	loseBuf.loadFromFile("lose.wav");
+            }
 
-	hitPaddleSound.setBuffer(hitPaddleBuf);
-	destroyBrickSound.setBuffer(destroyBrickBuf);
-	damageBrickSound.setBuffer(damageBrickBuf);
-	bounceWallSound.setBuffer(bounceWallBuf);
-	dieSound.setBuffer(dieBuf);
-	winSound.setBuffer(winBuf);
-	loseSound.setBuffer(loseBuf);
+            bricks.clear();
 
+        } else if (event.type == Event::MouseMoved && !gameOver && !win) {
+            if (Mouse::getPosition(window).x < (frameWidth - 100.f) && Mouse::getPosition(window).x > 100.f) {
+                paddle.picture.setPosition(Vector2f(event.mouseMove.x, paddle.picture.getPosition().y));
 
-	background.setSize(Vector2f(frameWidth, frameHeight));
-	background.setPosition(0, 0);
-	background.setTexture(&textureBack);
+            }
+            if (!playing) {
+                ball.picture.setPosition(paddle.picture.getPosition().x, paddle.picture.getPosition().y - paddle.picture.getSize().y / 2 - ball.picture.getRadius());
 
+            }
+        }
+    }
 
-	lifeText.setFont(font);
-	lifeText.setCharacterSize(20);
-	lifeText.setPosition(620, frameHeight-30);
-	lifeText.setString("life:"+ std::to_string(life));
+    if (!gameOver) {
+        if ((Keyboard::isKeyPressed(Keyboard::Left) || Keyboard::isKeyPressed(Keyboard::A)) &&
+                (paddle.picture.getPosition().x - paddle.picture.getSize().x / 2.f > 50.f)) {
+            paddle.picture.move(-paddle.speed * deltaTime, 0.f);
 
-	gameoverText.setFont(font);
-	gameoverText.setCharacterSize(35);
-	gameoverText.setPosition(100, 400);
-	gameoverText.setString("");
+        } if ((Keyboard::isKeyPressed(Keyboard::Right) || Keyboard::isKeyPressed(Keyboard::D)) &&
+                (paddle.picture.getPosition().x + paddle.picture.getSize().x / 2.f < frameWidth - 50.f)) {
+            paddle.picture.move(paddle.speed * deltaTime, 0.f);
 
-	scoreText.setFont(font);
-	scoreText.setCharacterSize(20);
-	scoreText.setPosition(80, frameHeight - 30);
-	scoreText.setString("score:"+ std::to_string(score));
+        }
+        if (Keyboard::isKeyPressed(Keyboard::Space) || Mouse::isButtonPressed(Mouse::Left)) {
+            playing = true;
 
+        }
+        if (!playing) {
+            ball.picture.setPosition(paddle.picture.getPosition().x, paddle.picture.getPosition().y - paddle.picture.getSize().y / 2 - ball.picture.getRadius());
+
+        }
+    }
+
+    if (Keyboard::isKeyPressed(Keyboard::Return)) {
+        if (gameOver) {
+            life = 3;
+            gameOver = false;
+            score = 0;
+            loadLevel(level);
+
+        } else if (win) {
+            win = false;
+            level = (level + 1) % 3;
+            loadLevel(level);
+
+        }
+    } else if (Keyboard::isKeyPressed(Keyboard::Num1)) {
+        level = 0;
+        loadLevel(level);
+
+    } else if (Keyboard::isKeyPressed(Keyboard::Num2)) {
+        level = 1;
+        loadLevel(level);
+
+    } else if (Keyboard::isKeyPressed(Keyboard::Num3)) {
+        level = 2;
+        loadLevel(level);
+
+    }
 }
 
-void Reset()
-{
-	ball.setPosition(paddle.picture.getPosition().x, paddle.picture.getPosition().y - paddle.picture.getSize().y / 2 - ball.picture.getRadius());
-	ball.angle = (270 + std::rand() % 60 - 30) * 2 * pi / 360;
+void loadLevel(int level) {
+    playing = false;
+    gameOver = false;
 
+    gameOverText.setString("");
+
+    paddle.initiate();
+    paddle.setSize(150,35);
+    paddle.setPosition(frameWidth / 2, frameHeight - paddle.picture.getSize().y);
+    paddle.picture.setTexture(&texturePaddle);
+
+    ball.initiate();
+    ball.setSize(10);
+    ball.setPosition(paddle.picture.getPosition().x, paddle.picture.getPosition().y - paddle.picture.getSize().y / 2 - ball.picture.getRadius());
+    ball.angle = (270 + rand() % 60 - 30) * 2 * pi / 360;
+    ball.picture.setTexture(&textureBall);
+
+    for (int i = 0; i < bricks.size(); ++i) {
+        delete bricks[i];
+        bricks[i] = nullptr;
+
+    }
+
+    bricks.clear();
+
+    if (level == 0) {
+        for (int i = 0; i < 10; ++i) {
+            Brick* bptr = new Brick;
+            bptr -> initiate();
+            bptr -> setSize(70, 30);
+            bptr -> setPosition(startPosX + bptr -> picture.getSize().x / 2 + i*bptr -> picture.getSize().x, startPosY + bptr -> picture.getSize().y / 2);
+            bptr -> hp = 1;
+            bptr -> brickScore = 1;
+            bricks.push_back(bptr);
+
+        }
+
+        for (int i = 0; i < 10; ++i) {
+            Brick* bptr = new Brick;
+            bptr -> initiate();
+            bptr -> setSize(70, 30);
+            bptr -> setPosition(startPosX + bptr -> picture.getSize().x / 2 + i*bptr -> picture.getSize().x, startPosY + 3 * bptr -> picture.getSize().y + bptr -> picture.getSize().y / 2);
+            bptr -> hp = 2;
+            bptr -> brickScore = 2;
+            bricks.push_back(bptr);
+
+        }
+
+        for (int i = 0; i < 2; ++i) {
+            for (int j = 0; j < 10; ++j) {
+                Brick* bptr = new Brick;
+                bptr -> initiate();
+                bptr -> setSize(70, 30);
+                bptr ->setPosition(startPosX + bptr -> picture.getSize().x / 2 + j*bptr -> picture.getSize().x, startPosY + 6 * bptr -> picture.getSize().y + bptr -> picture.getSize().y / 2 + i*bptr -> picture.getSize().y);
+                bptr -> hp = 3;
+                bptr -> brickScore = 3;
+                bricks.push_back(bptr);
+
+            }
+        }
+
+        for (int i = 0; i < 10; ++i) {
+            Brick* bptr = new Brick;
+            bptr -> initiate();
+            bptr -> setSize(70, 30);
+            bptr -> setPosition(startPosX + bptr -> picture.getSize().x / 2 + i*bptr->picture.getSize().x, startPosY + 9 * bptr -> picture.getSize().y + bptr -> picture.getSize().y / 2);
+            bptr -> hp = 1;
+            bptr -> brickScore = 1;
+            bptr -> speed = 400;
+            bricks.push_back(bptr);
+
+        }
+
+        for (int i = 0; i < 4; ++i) {
+            Brick* bptr = new Brick;
+            bptr -> initiate();
+            bptr -> setSize(70, 30);
+            bptr -> setPosition(startPosX + bptr -> picture.getSize().x / 2 + i*bptr -> picture.getSize().x, startPosY + 11 * bptr -> picture.getSize().y + bptr -> picture.getSize().y / 2);
+            bptr -> hp = 99999;
+            bptr -> brickScore = 5;
+            bricks.push_back(bptr);
+
+        }
+
+        for (int i = 0; i < 4; ++i) {
+            Brick* bptr = new Brick;
+            bptr -> initiate();
+            bptr -> setSize(70, 30);
+            bptr -> setPosition(startPosX + bptr -> picture.getSize().x / 2 + i*bptr -> picture.getSize().x + 6*bptr -> picture.getSize().x, startPosY + 11 * bptr -> picture.getSize().y + bptr -> picture.getSize().y / 2);
+            bptr -> hp = 99999;
+            bptr -> brickScore = 5;
+            bricks.push_back(bptr);
+
+        }
+    }
+
+    else if (level == 1) {
+        for (int i = 0; i < 5; ++i) {
+            Brick* bptr = new Brick;
+            bptr -> initiate();
+            bptr -> setSize(70, 30);
+            bptr -> setPosition(startPosX + bptr -> picture.getSize().x / 2 + i*bptr -> picture.getSize().x, startPosY + 10 * bptr -> picture.getSize().y + bptr -> picture.getSize().y / 2 - i*bptr -> picture.getSize().y);
+            bptr -> hp = 1;
+            bptr -> brickScore = 1;
+            bricks.push_back(bptr);
+
+        }
+
+        for (int i = 0; i < 5; ++i) {
+            Brick* bptr = new Brick;
+            bptr -> initiate();
+            bptr -> setSize(70, 30);
+            bptr -> setPosition(startPosX + bptr -> picture.getSize().x / 2 + i*bptr -> picture.getSize().x + 5 * bptr -> picture.getSize().x, startPosY + bptr -> picture.getSize().y / 2 + i*bptr -> picture.getSize().y + 6 * bptr -> picture.getSize().y);
+            bptr -> hp = 1;
+            bptr -> brickScore = 1;
+            bricks.push_back(bptr);
+
+        }
+
+        for (int i = 0; i < 2; ++i) {
+            for (int j = 0; j < 2; ++j) {
+                Brick* bptr = new Brick;
+                bptr -> initiate();
+                bptr -> setSize(70, 30);
+                bptr -> setPosition(startPosX + bptr -> picture.getSize().x / 2 + j*bptr -> picture.getSize().x + 4 * bptr -> picture.getSize().x, startPosY + bptr -> picture.getSize().y / 2 + i*bptr -> picture.getSize().y);
+                bptr -> hp = 2;
+                bptr -> brickScore = 2;
+                bricks.push_back(bptr);
+
+            }
+        }
+
+        for (int i = 0; i < 2; ++i) {
+            for (int j = 0; j < 2; ++j) {
+                Brick* bptr = new Brick;
+                bptr -> initiate();
+                bptr -> setSize(70, 30);
+                bptr -> setPosition(startPosX + bptr -> picture.getSize().x / 2 + j*bptr -> picture.getSize().x + 4 * bptr -> picture.getSize().x, startPosY + bptr -> picture.getSize().y / 2 + i*bptr -> picture.getSize().y + 4 * bptr -> picture.getSize().y);
+                bptr -> hp = 2;
+                bptr -> brickScore = 2;
+                bricks.push_back(bptr);
+
+            }
+        }
+
+        for (int i = 0; i < 2; ++i) {
+            for (int j = 0; j < 10; ++j) {
+                Brick* bptr = new Brick;
+                bptr -> initiate();
+                bptr -> setSize(70, 30);
+                bptr -> setPosition(startPosX + bptr -> picture.getSize().x / 2 + j*bptr -> picture.getSize().x, startPosY + bptr -> picture.getSize().y / 2 + i*bptr -> picture.getSize().y + 2 * bptr -> picture.getSize().y);
+                bptr -> hp = 1;
+                bptr -> brickScore = 1;
+                bptr -> speed = 300;
+                bricks.push_back(bptr);
+
+            }
+        }
+
+        for (int i = 0; i < 4; ++i) {
+            Brick* bptr = new Brick;
+            bptr -> initiate();
+            bptr -> setSize(70, 30);
+            bptr -> setPosition(startPosX + bptr -> picture.getSize().x / 2 + i*bptr -> picture.getSize().x, startPosY + 11 * bptr -> picture.getSize().y + bptr -> picture.getSize().y / 2);
+            bptr -> hp = 99999;
+            bptr -> brickScore = 5;
+            bricks.push_back(bptr);
+
+        }
+
+        for (int i = 0; i < 4; ++i) {
+            Brick* bptr = new Brick;
+            bptr -> initiate();
+            bptr -> setSize(70, 30);
+            bptr -> setPosition(startPosX + bptr -> picture.getSize().x / 2 + i*bptr -> picture.getSize().x + 6 * bptr -> picture.getSize().x, startPosY + 11 * bptr -> picture.getSize().y + bptr -> picture.getSize().y / 2);
+            bptr -> hp = 99999;
+            bptr -> brickScore = 5;
+            bricks.push_back(bptr);
+
+        }
+    }
+
+    else if (level == 2) {
+        for (int i = 0; i < 10; ++i) {
+            for (int j = 0; j < 10; ++j) {
+                int temp = rand() % 5;
+                if (temp == 0) {
+                    Brick* bptr = new Brick;
+                    bptr -> initiate();
+                    bptr -> setSize(70, 30);
+                    bptr -> setPosition(startPosX + bptr -> picture.getSize().x / 2 + j* bptr -> picture.getSize().x, startPosY + bptr -> picture.getSize().y / 2 + i*bptr -> picture.getSize().y);
+                    bptr -> hp = 1;
+                    bptr -> brickScore = 1;
+                    bricks.push_back(bptr);
+
+                } else if (temp == 1) {
+                    Brick* bptr = new Brick;
+                    bptr -> initiate();
+                    bptr -> setSize(70, 30);
+                    bptr -> setPosition(startPosX + bptr -> picture.getSize().x / 2 + j* bptr -> picture.getSize().x, startPosY + bptr -> picture.getSize().y / 2 + i*bptr -> picture.getSize().y);
+                    bptr -> hp = 2;
+                    bptr -> brickScore = 2;
+                    bricks.push_back(bptr);
+
+                } else if (temp == 2) {
+                    Brick* bptr = new Brick;
+                    bptr -> initiate();
+                    bptr -> setSize(70, 30);
+                    bptr -> setPosition(startPosX + bptr -> picture.getSize().x / 2 + j* bptr -> picture.getSize().x, startPosY + bptr -> picture.getSize().y / 2 + i*bptr -> picture.getSize().y);
+                    bptr -> hp = 99999;
+                    bptr -> brickScore = 99999;
+                    bricks.push_back(bptr);
+
+                } else if (temp == 3) {
+                    Brick* bptr = new Brick;
+                    bptr -> initiate();
+                    bptr -> setSize(70, 30);
+                    bptr -> setPosition(startPosX + bptr -> picture.getSize().x / 2 + j* bptr -> picture.getSize().x, startPosY + bptr -> picture.getSize().y / 2 + i*bptr -> picture.getSize().y);
+                    bptr -> hp = 1;
+                    bptr -> brickScore = 1;
+                    bptr -> speed = 300;
+                    bricks.push_back(bptr);
+
+                }
+            }
+        }
+    }
 }
-
-void Update()
-{
-	if (ball.angle < 0)
-	{
-		ball.angle += 2 * pi;
-	}
-	ball.angle = fmod(ball.angle, 2 * pi);
-
-	float factor = ball.speed * deltaTime;
-	ball.picture.move(std::cos(ball.angle) * factor, std::sin(ball.angle) * factor);
-	//physics
-	//edge
-	if (ball.picture.getPosition().y + ball.picture.getRadius() > frameHeight)
-	{
-		isPlaying = false;
-		life--;
-		dieSound.play();
-		Reset();
-	}else if (ball.picture.getPosition().x - ball.picture.getRadius() < 50.f)
-	{
-		ball.angle = pi - ball.angle;
-		ball.picture.setPosition(ball.picture.getRadius() + 50.1f, ball.picture.getPosition().y);
-		bounceWallSound.play();
-	}
-	else if (ball.picture.getPosition().x + ball.picture.getRadius() > frameWidth-50)
-	{
-		ball.angle = pi - ball.angle;
-		ball.setPosition(frameWidth - ball.picture.getRadius() - 50.1f, ball.picture.getPosition().y);
-		bounceWallSound.play();
-	}
-	else if (ball.picture.getPosition().y - ball.picture.getRadius() < 50.f)
-	{
-		ball.angle = -ball.angle;
-		ball.setPosition(ball.picture.getPosition().x, ball.picture.getRadius()+50.1f);
-		bounceWallSound.play();
-	}
-
-	//paddle
-	if (BallBottom(paddle.picture))
-	{
-		int dis = ball.picture.getPosition().x - paddle.picture.getPosition().x;
-		if (dis > 30 && ball.angle > 1.f / 2.f*pi)
-		{
-			ball.angle = ball.angle - pi;
-		}
-		else if (dis < -30 && ball.angle < 1.f / 2.f*pi)
-		{
-			ball.angle = ball.angle - pi;
-		}
-		else
-		{
-			ball.angle = -ball.angle;
-			if (ball.angle > 1.f / 2.f*pi&&ball.angle < 7.f / 8.f*pi)
-			{
-				ball.angle+= (std::rand() % 15) * pi / 180;
-			}
-			else if(ball.angle < 1.f / 2.f*pi&&ball.angle > 1.f / 8.f*pi)
-			{
-				ball.angle -= (std::rand() % 15) * pi / 180;
-			}
-			else if (ball.angle <= 1.f / 8.f*pi)
-			{
-				ball.angle += (std::rand() % 15) * pi / 180;
-			}
-			else if (ball.angle >= 7.f / 8.f*pi)
-			{
-				ball.angle -= (std::rand() % 15) * pi / 180;
-			}
-		}
-
-		combo = 0;
-		ball.setPosition(ball.picture.getPosition().x, paddle.picture.getPosition().y - paddle.picture.getSize().y/2 - ball.picture.getRadius() - 0.1f);
-		hitPaddleSound.play();
-	}
-	//bricks
-	for (int i = 0; i < bricks.size(); ++i)
-	{
-		if (bricks[i]->enable)
-		{
-			if (bricks[i]->speed != 0.f)
-			{
-				if (bricks[i]->picture.getPosition().x - bricks[i]->picture.getSize().x / 2 < 50.f)
-					bricks[i]->moveLeft = false;
-				else if (bricks[i]->picture.getPosition().x + bricks[i]->picture.getSize().x / 2 > frameWidth - 50.f)
-					bricks[i]->moveLeft = true;
-
-				if (bricks[i]->moveLeft)
-					bricks[i]->picture.move(-bricks[i]->speed* deltaTime, 0.0f);
-				else
-					bricks[i]->picture.move(bricks[i]->speed* deltaTime,0.0f);
-
-
-			}
-
-
-			if (BallUp(bricks[i]->picture))
-			{
-				ball.angle = -ball.angle;
-				ball.setPosition(ball.picture.getPosition().x, bricks[i]->picture.getPosition().y + bricks[i]->picture.getSize().y / 2 + ball.picture.getRadius() + 0.1f);
-				if (bricks[i]->hit())
-				{
-					destroyBrickSound.play();
-				}
-				else
-				{
-					damageBrickSound.play();
-				}
-				combo++;
-				score = score + combo * 10;
-			}
-			else if (BallBottom(bricks[i]->picture))
-			{
-				ball.angle = -ball.angle;
-				ball.setPosition(ball.picture.getPosition().x, bricks[i]->picture.getPosition().y - bricks[i]->picture.getSize().y / 2 - ball.picture.getRadius() - 0.1f);
-				if (bricks[i]->hit())
-				{
-					destroyBrickSound.play();
-				}
-				else
-				{
-					damageBrickSound.play();
-				}
-				combo++;
-				score = score + combo * 10;
-			}
-			else if (BallLeft(bricks[i]->picture))
-			{
-				ball.angle = pi-ball.angle;
-				ball.setPosition(bricks[i]->picture.getPosition().x + ball.picture.getRadius() + bricks[i]->picture.getSize().x / 2 + 0.1f, ball.picture.getPosition().y);
-				if (bricks[i]->hit())
-				{
-					destroyBrickSound.play();
-				}
-				else
-				{
-					damageBrickSound.play();
-				}
-				combo++;
-				score = score + combo * 10;
-			}
-			else if (BallRight(bricks[i]->picture))
-			{
-				ball.angle = pi-ball.angle;
-				ball.setPosition(bricks[i]->picture.getPosition().x - ball.picture.getRadius() - bricks[i]->picture.getSize().x / 2 - 0.1f, ball.picture.getPosition().y);
-				if (bricks[i]->hit())
-				{
-					destroyBrickSound.play();
-				}
-				else
-				{
-					damageBrickSound.play();
-				}
-				combo++;
-				score = score + combo * 10;
-			}
-		}
-	}
-	if (life <= 0)
-	{
-		gameover = true;
-		BGMSound.pause();
-		loseSound.play();
-		gameoverText.setString("game over, press \"Enter\" restart");
-	}
-
-	int count = 0;
-	for (int i = 0; i < bricks.size(); ++i)
-	{
-		if (bricks[i]->enable&&bricks[i]->hp<3)
-			count++;
-	}
-
-	if (count <= 0)
-	{
-		win = true;
-		ball.speed += 100.f;
-		BGMSound.pause();
-		winSound.play();
-		gameoverText.setString("Win! press \"Enter\" to next level");
-	}
-	lifeText.setString("life:" + std::to_string(life));
-	scoreText.setString("score:" + std::to_string(score));
-}
-
-void Render()
-{
-	window.clear(sf::Color::Black);
-	window.draw(background);
-	window.draw(paddle.picture);
-	window.draw(ball.picture);
-
-	for (int i = 0; i < bricks.size(); ++i)
-	{
-		if (bricks[i]->enable)
-		{
-			if (bricks[i]->hp == 1)
-			{
-				bricks[i]->picture.setTexture(&textureBrick);
-				bricks[i]->picture.setFillColor(Color::Color(0,255,255,255));
-			}
-			else if (bricks[i]->hp == 2)
-			{
-				bricks[i]->picture.setTexture(&textureBrick);
-				bricks[i]->picture.setFillColor(Color::Color(255, 0, 0, 255));
-			}
-			else
-			{
-				bricks[i]->picture.setTexture(&textureBrick);
-				bricks[i]->picture.setFillColor(Color::Color(255, 255, 255, 255));
-			}
-			window.draw(bricks[i]->picture);
-		}
-
-	}
-	window.draw(lifeText);
-	window.draw(gameoverText);
-	window.draw(scoreText);
-	window.display();
-}
-
-void HandleInput()
-{
-	sf::Event event;
-	while (window.pollEvent(event))
-	{
-		if (event.type == sf::Event::Closed)
-		{
-			window.close();
-			for (int i = 0; i < bricks.size(); ++i)
-			{
-				delete bricks[i];
-				bricks[i] = nullptr;
-			}
-			bricks.clear();
-		}
-		else if (event.type == sf::Event::MouseMoved&&!gameover&&!win)
-		{
-			if (Mouse::getPosition(window).x < (frameWidth - 100.f) && Mouse::getPosition(window).x  > 100.f)
-			{
-				paddle.picture.setPosition(Vector2f(event.mouseMove.x, paddle.picture.getPosition().y));
-			}
-			if (!isPlaying)
-			{
-				ball.picture.setPosition(paddle.picture.getPosition().x, paddle.picture.getPosition().y - paddle.picture.getSize().y / 2 - ball.picture.getRadius());
-			}
-		}
-	}
-
-
-
-	if (!gameover)
-	{
-		if ((sf::Keyboard::isKeyPressed(sf::Keyboard::Left) || sf::Keyboard::isKeyPressed(sf::Keyboard::A)) &&
-			(paddle.picture.getPosition().x - paddle.picture.getSize().x / 2.f > 50.f))
-		{
-			paddle.picture.move(-paddle.speed * deltaTime, 0.f);
-		}
-		if ((sf::Keyboard::isKeyPressed(sf::Keyboard::Right) || sf::Keyboard::isKeyPressed(sf::Keyboard::D)) &&
-			(paddle.picture.getPosition().x + paddle.picture.getSize().x / 2.f < frameWidth - 50.f))
-		{
-			paddle.picture.move(paddle.speed * deltaTime, 0.f);
-		}
-
-		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Space) || sf::Mouse::isButtonPressed(sf::Mouse::Left))
-		{
-			isPlaying = true;
-		}
-
-		if (!isPlaying)
-		{
-			ball.picture.setPosition(paddle.picture.getPosition().x, paddle.picture.getPosition().y - paddle.picture.getSize().y / 2 - ball.picture.getRadius());
-		}
-
-	}
-
-	if (sf::Keyboard::isKeyPressed(sf::Keyboard::Return))
-	{
-		if (gameover)
-		{
-			life = 3;
-			gameover = false;
-			score = 0;
-			combo = 0;
-			loadLevel(level);
-			BGMSound.play();
-		}
-		else if (win)
-		{
-			win = false;
-			level = (level + 1) % 3;
-			loadLevel(level);
-			BGMSound.play();
-		}
-	}
-	else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num1))
-	{
-		level = 0;
-		loadLevel(level);
-	}
-	else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num2))
-	{
-		level = 1;
-		loadLevel(level);
-	}
-	else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num3))
-	{
-		level = 2;
-		loadLevel(level);
-	}
-	
-}
-
-
-void loadLevel(int level)
-{
-	isPlaying = false;
-	gameover = false;
-
-
-	gameoverText.setString("");
-
-	paddle.initiate();
-	paddle.setSize(150, 35);
-	paddle.setPosition(frameWidth / 2, frameHeight - paddle.picture.getSize().y);
-	paddle.picture.setTexture(&texturePaddle);
-
-	ball.initiate();
-	ball.setSize(10);
-	ball.setPosition(paddle.picture.getPosition().x, paddle.picture.getPosition().y - paddle.picture.getSize().y / 2 - ball.picture.getRadius());
-	ball.angle = (270 + std::rand() % 60 - 30) * 2 * pi / 360;
-	ball.picture.setTexture(&textureBall);
-
-
-	for (int i = 0; i < bricks.size(); ++i)
-	{
-		delete bricks[i];
-		bricks[i] = nullptr;
-	}
-	bricks.clear();
-
-	if (level == 0)
-	{
-		
-		for (int i = 0; i < 10; i++)
-		{
-				Brick* bptr = new Brick;
-				bptr->initiate();
-				bptr->setSize(70, 30);
-				bptr->setPosition(startposX + bptr->picture.getSize().x / 2 + i*bptr->picture.getSize().x, startposY + bptr->picture.getSize().y / 2);
-				bptr->hp = 1;
-				bricks.push_back(bptr);
-
-		}
-
-		for (int i = 0; i < 10; i++)
-		{
-				Brick* bptr = new Brick;
-				bptr->initiate();
-				bptr->setSize(70, 30);
-				bptr->setPosition(startposX + bptr->picture.getSize().x / 2 + i*bptr->picture.getSize().x, startposY + 3 * bptr->picture.getSize().y + bptr->picture.getSize().y / 2 );
-				bptr->hp = 1;
-				bricks.push_back(bptr);
-
-		}
-
-		for (int i = 0; i < 2; i++)
-		{
-			for (int j = 0; j < 10; j++)
-			{
-				Brick* bptr = new Brick;
-				bptr->initiate();
-				bptr->setSize(70, 30);
-				bptr->setPosition(startposX + bptr->picture.getSize().x / 2 + j*bptr->picture.getSize().x, startposY + 6 * bptr->picture.getSize().y + bptr->picture.getSize().y / 2 + i*bptr->picture.getSize().y);
-				bptr->hp = 2;
-				bricks.push_back(bptr);
-
-			}
-		}
-
-		for (int i = 0; i < 10; i++)
-		{
-			Brick* bptr = new Brick;
-			bptr->initiate();
-			bptr->setSize(70, 30);
-			bptr->setPosition(startposX + bptr->picture.getSize().x / 2 + i*bptr->picture.getSize().x, startposY + 9 * bptr->picture.getSize().y + bptr->picture.getSize().y / 2);
-			bptr->hp = 1;
-			bptr->speed = 400;
-			bricks.push_back(bptr);
-			
-		}
-
-		for (int i = 0; i < 4; i++)
-		{
-			Brick* bptr = new Brick;
-			bptr->initiate();
-			bptr->setSize(70, 30);
-			bptr->setPosition(startposX + bptr->picture.getSize().x / 2 + i*bptr->picture.getSize().x, startposY + 11 * bptr->picture.getSize().y + bptr->picture.getSize().y / 2);
-			bptr->hp = 99999;
-			bricks.push_back(bptr);
-
-		}
-
-		for (int i = 0; i < 4; i++)
-		{
-			Brick* bptr = new Brick;
-			bptr->initiate();
-			bptr->setSize(70, 30);
-			bptr->setPosition(startposX + bptr->picture.getSize().x / 2 + i*bptr->picture.getSize().x+ 6*bptr->picture.getSize().x, startposY + 11 * bptr->picture.getSize().y + bptr->picture.getSize().y / 2);
-			bptr->hp = 99999;
-			bricks.push_back(bptr);
-
-		}
-	}
-	else if (level == 1)
-	{
-
-		for (int i = 0; i < 5; i++)
-		{
-			Brick* bptr = new Brick;
-			bptr->initiate();
-			bptr->setSize(70, 30);
-			bptr->setPosition(startposX + bptr->picture.getSize().x / 2 + i*bptr->picture.getSize().x, startposY + 10 * bptr->picture.getSize().y + bptr->picture.getSize().y / 2 - i*bptr->picture.getSize().y);
-			bptr->hp = 1;
-			bricks.push_back(bptr);
-
-		}
-
-		for (int i = 0; i < 5; i++)
-		{
-			Brick* bptr = new Brick;
-			bptr->initiate();
-			bptr->setSize(70, 30);
-			bptr->setPosition(startposX + bptr->picture.getSize().x / 2 + i*bptr->picture.getSize().x + 5 * bptr->picture.getSize().x, startposY + bptr->picture.getSize().y / 2 + i*bptr->picture.getSize().y + 6 * bptr->picture.getSize().y);
-			bptr->hp = 1;
-			bricks.push_back(bptr);
-
-		}
-		
-		for (int i = 0; i < 2; i++)
-		{
-			for (int j = 0; j < 2; j++)
-			{
-				Brick* bptr = new Brick;
-				bptr->initiate();
-				bptr->setSize(70, 30);
-				bptr->setPosition(startposX + bptr->picture.getSize().x / 2 + j*bptr->picture.getSize().x + 4 * bptr->picture.getSize().x, startposY+ bptr->picture.getSize().y / 2 + i*bptr->picture.getSize().y);
-				bptr->hp = 2;
-				bricks.push_back(bptr);
-
-			}
-		}
-
-		for (int i = 0; i < 2; i++)
-		{
-			for (int j = 0; j < 2; j++)
-			{
-				Brick* bptr = new Brick;
-				bptr->initiate();
-				bptr->setSize(70, 30);
-				bptr->setPosition(startposX + bptr->picture.getSize().x / 2 + j*bptr->picture.getSize().x + 4 * bptr->picture.getSize().x, startposY + bptr->picture.getSize().y / 2 + i*bptr->picture.getSize().y + 4 * bptr->picture.getSize().y);
-				bptr->hp = 2;
-				bricks.push_back(bptr);
-
-			}
-		}
-
-		for (int i = 0; i < 2; i++)
-		{
-			for (int j = 0; j < 10; j++)
-			{
-				Brick* bptr = new Brick;
-				bptr->initiate();
-				bptr->setSize(70, 30);
-				bptr->setPosition(startposX + bptr->picture.getSize().x / 2 + j*bptr->picture.getSize().x, startposY + bptr->picture.getSize().y / 2 + i*bptr->picture.getSize().y + 2 * bptr->picture.getSize().y);
-				bptr->hp = 1;
-				bptr->speed = 300;
-				bricks.push_back(bptr);
-
-			}
-		}
-
-		for (int i = 0; i < 4; i++)
-		{
-			Brick* bptr = new Brick;
-			bptr->initiate();
-			bptr->setSize(70, 30);
-			bptr->setPosition(startposX + bptr->picture.getSize().x / 2 + i*bptr->picture.getSize().x, startposY + 11 * bptr->picture.getSize().y + bptr->picture.getSize().y / 2);
-			bptr->hp = 99999;
-			bricks.push_back(bptr);
-
-		}
-
-		for (int i = 0; i < 4; i++)
-		{
-			Brick* bptr = new Brick;
-			bptr->initiate();
-			bptr->setSize(70, 30);
-			bptr->setPosition(startposX + bptr->picture.getSize().x / 2 + i*bptr->picture.getSize().x + 6 * bptr->picture.getSize().x, startposY + 11 * bptr->picture.getSize().y + bptr->picture.getSize().y / 2);
-			bptr->hp = 99999;
-			bricks.push_back(bptr);
-
-		}
-
-	}
-	else if (level == 2)
-	{
-		for (int i = 0; i < 10; i++)
-		{
-			for (int j = 0; j < 10; j++)
-			{
-				int temp = rand() % 5;
-				if (temp == 0)
-				{
-					Brick* bptr = new Brick;
-					bptr->initiate();
-					bptr->setSize(70, 30);
-					bptr->setPosition(startposX + bptr->picture.getSize().x / 2 + j*bptr->picture.getSize().x, startposY + bptr->picture.getSize().y / 2 + i*bptr->picture.getSize().y);
-					bptr->hp = 1;
-					bricks.push_back(bptr);
-				}
-				else if (temp == 1)
-				{
-					Brick* bptr = new Brick;
-					bptr->initiate();
-					bptr->setSize(70, 30);
-					bptr->setPosition(startposX + bptr->picture.getSize().x / 2 + j*bptr->picture.getSize().x, startposY + bptr->picture.getSize().y / 2 + i*bptr->picture.getSize().y);
-					bptr->hp = 2;
-					bricks.push_back(bptr);
-				}
-				else if (temp == 2)
-				{
-					Brick* bptr = new Brick;
-					bptr->initiate();
-					bptr->setSize(70, 30);
-					bptr->setPosition(startposX + bptr->picture.getSize().x / 2 + j*bptr->picture.getSize().x, startposY + bptr->picture.getSize().y / 2 + i*bptr->picture.getSize().y);
-					bptr->hp = 99999;
-					bricks.push_back(bptr);
-				}
-				else if (temp == 3)
-				{
-					Brick* bptr = new Brick;
-					bptr->initiate();
-					bptr->setSize(70, 30);
-					bptr->setPosition(startposX + bptr->picture.getSize().x / 2 + j*bptr->picture.getSize().x, startposY + bptr->picture.getSize().y / 2 + i*bptr->picture.getSize().y);
-					bptr->hp = 1;
-					bptr->speed = 300;
-					bricks.push_back(bptr);
-				}
-
-			}
-		}
-
-	}
-}
-
 bool BallLeft(RectangleShape rect)
 {
-	if (ball.picture.getPosition().x + ball.picture.getRadius() > rect.getPosition().x - rect.getSize().x / 2 &&
-		ball.picture.getPosition().x + ball.picture.getRadius() < rect.getPosition().x + rect.getSize().x / 2 &&
-		ball.picture.getPosition().y + ball.picture.getRadius() >= rect.getPosition().y - rect.getSize().y / 2 &&
-		ball.picture.getPosition().y - ball.picture.getRadius() <= rect.getPosition().y + rect.getSize().y / 2)
-		return true;
-	else
-		return false;
+    if (ball.picture.getPosition().x + ball.picture.getRadius() > rect.getPosition().x - rect.getSize().x / 2 &&
+        ball.picture.getPosition().x + ball.picture.getRadius() < rect.getPosition().x + rect.getSize().x / 2 &&
+        ball.picture.getPosition().y + ball.picture.getRadius() >= rect.getPosition().y - rect.getSize().y / 2 &&
+        ball.picture.getPosition().y - ball.picture.getRadius() <= rect.getPosition().y + rect.getSize().y / 2)
+        return true;
+    else
+        return false;
 }
 bool BallRight(RectangleShape rect)
 {
-	if (ball.picture.getPosition().x - ball.picture.getRadius() > rect.getPosition().x - rect.getSize().x / 2 &&
-		ball.picture.getPosition().x - ball.picture.getRadius() < rect.getPosition().x + rect.getSize().x / 2 &&
-		ball.picture.getPosition().y + ball.picture.getRadius() >= rect.getPosition().y - rect.getSize().y / 2 &&
-		ball.picture.getPosition().y - ball.picture.getRadius() <= rect.getPosition().y + rect.getSize().y / 2)
-		return true;
-	else
-		return false;
+    if (ball.picture.getPosition().x - ball.picture.getRadius() > rect.getPosition().x - rect.getSize().x / 2 &&
+        ball.picture.getPosition().x - ball.picture.getRadius() < rect.getPosition().x + rect.getSize().x / 2 &&
+        ball.picture.getPosition().y + ball.picture.getRadius() >= rect.getPosition().y - rect.getSize().y / 2 &&
+        ball.picture.getPosition().y - ball.picture.getRadius() <= rect.getPosition().y + rect.getSize().y / 2)
+        return true;
+    else
+        return false;
 }
 bool BallUp(RectangleShape rect)
 {
-	if (ball.picture.getPosition().x + ball.picture.getRadius() >= rect.getPosition().x - rect.getSize().x / 2 &&
-		ball.picture.getPosition().x - ball.picture.getRadius() <= rect.getPosition().x + rect.getSize().x / 2 &&
-		ball.picture.getPosition().y - ball.picture.getRadius() < rect.getPosition().y + rect.getSize().y / 2 &&
-		ball.picture.getPosition().y - ball.picture.getRadius() > rect.getPosition().y - rect.getSize().y / 2)
-		return true;
-	else
-		return false;
+    if (ball.picture.getPosition().x + ball.picture.getRadius() >= rect.getPosition().x - rect.getSize().x / 2 &&
+        ball.picture.getPosition().x - ball.picture.getRadius() <= rect.getPosition().x + rect.getSize().x / 2 &&
+        ball.picture.getPosition().y - ball.picture.getRadius() < rect.getPosition().y + rect.getSize().y / 2 &&
+        ball.picture.getPosition().y - ball.picture.getRadius() > rect.getPosition().y - rect.getSize().y / 2)
+        return true;
+    else
+        return false;
 }
 bool BallBottom(RectangleShape rect)
 {
-	if (ball.picture.getPosition().x + ball.picture.getRadius() >= rect.getPosition().x - rect.getSize().x / 2 &&
-		ball.picture.getPosition().x - ball.picture.getRadius() <= rect.getPosition().x + rect.getSize().x / 2 &&
-		ball.picture.getPosition().y + ball.picture.getRadius() < rect.getPosition().y + rect.getSize().y / 2 &&
-		ball.picture.getPosition().y + ball.picture.getRadius() > rect.getPosition().y - rect.getSize().y / 2)
-		return true;
-	else
-		return false;
+    if (ball.picture.getPosition().x + ball.picture.getRadius() >= rect.getPosition().x - rect.getSize().x / 2 &&
+        ball.picture.getPosition().x - ball.picture.getRadius() <= rect.getPosition().x + rect.getSize().x / 2 &&
+        ball.picture.getPosition().y + ball.picture.getRadius() < rect.getPosition().y + rect.getSize().y / 2 &&
+        ball.picture.getPosition().y + ball.picture.getRadius() > rect.getPosition().y - rect.getSize().y / 2)
+        return true;
+    else
+        return false;
 }
+void Brick::scoreChange() {
+    if (brickScore == 1) {
+        score = score + 10;
+    } else if (brickScore == 2) {
+        score = score + 15;
+    } else if (brickScore == 3) {
+        score = score + 20;
+    } else {
+        score = score + 30;
+    }
+}
+void Brick::surprise(int surpTemp) {
+    if (surpTemp == 0){
+        ball.speed = 350;
+    }
+    else if(surpTemp == 1){
+        ball.speed = 650;
+    }
+    else if(surpTemp == 2){
+        paddle.setSize(100,35);
+    }
+    else if(surpTemp == 3){
+        paddle.setSize(200,35);
+    }else if(surpTemp == 4){
+        Ball* balls = new Ball;
+        //balls -> ball.initiate();
+    }
+    else{
+    }}
